@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PSB Resampler</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f0f2f5; color: #1a1a2e; padding: 20px;
+    min-height: 100vh;
+  }
+  h1 { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { color: #666; font-size: 13px; margin-bottom: 20px; }
+  .container { max-width: 900px; margin: 0 auto; }
+
+  .dropzone {
+    border: 3px dashed #b0b8c8; border-radius: 12px;
+    padding: 60px 20px; text-align: center; cursor: pointer;
+    transition: all 0.2s; background: #fff; margin-bottom: 20px;
+  }
+  .dropzone:hover, .dropzone.dragover { border-color: #4a6cf7; background: #eef1ff; }
+  .dropzone-icon { font-size: 48px; margin-bottom: 12px; }
+  .dropzone-text { font-size: 16px; color: #666; }
+  .dropzone-text strong { color: #4a6cf7; }
+
+  .card {
+    background: #fff; border-radius: 10px; padding: 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 16px;
+  }
+  .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 14px; color: #333;
+    text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .info-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px;
+  }
+  .info-item label { display: block; font-size: 11px; color: #888;
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+  .info-item .value { font-size: 18px; font-weight: 600; color: #1a1a2e; }
+  .info-item .value.small { font-size: 14px; }
+
+  .controls-grid {
+    display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: end;
+  }
+  .form-group { margin-bottom: 12px; }
+  .form-group label { display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 4px; }
+  .form-group input, .form-group select {
+    width: 100%; padding: 8px 10px; border: 1px solid #d0d5dd;
+    border-radius: 6px; font-size: 14px; background: #fafafa;
+  }
+  .form-group input:focus, .form-group select:focus { outline: none; border-color: #4a6cf7; background: #fff; }
+  .link-btn {
+    background: none; border: none; cursor: pointer; font-size: 20px;
+    color: #4a6cf7; padding: 8px; align-self: center; margin-bottom: 14px;
+  }
+  .link-btn.locked { color: #4a6cf7; }
+  .link-btn.unlocked { color: #ccc; }
+
+  .slider-row { display: flex; align-items: center; gap: 12px; }
+  .slider-row input[type=range] { flex: 1; }
+  .slider-row .slider-val { font-weight: 600; min-width: 40px; text-align: right; }
+
+  .dpi-row { display: flex; gap: 12px; align-items: end; }
+  .dpi-row .form-group { flex: 1; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 28px; border: none; border-radius: 8px; font-size: 15px;
+    font-weight: 600; cursor: pointer; transition: all 0.15s;
+  }
+  .btn-primary { background: #4a6cf7; color: #fff; }
+  .btn-primary:hover { background: #3b5de7; }
+  .btn-primary:disabled { background: #b0b8c8; cursor: not-allowed; }
+  .btn-download { background: #22c55e; color: #fff; }
+  .btn-download:hover { background: #16a34a; }
+  .btn-row { display: flex; gap: 12px; margin-top: 16px; }
+
+  .progress-wrap { margin-top: 16px; display: none; }
+  .progress-bar-outer { height: 24px; background: #e8ebf0; border-radius: 12px; overflow: hidden; }
+  .progress-bar-inner {
+    height: 100%; background: linear-gradient(90deg, #4a6cf7, #7c5cf7);
+    border-radius: 12px; transition: width 0.3s; width: 0%;
+  }
+  .progress-text { font-size: 12px; color: #666; margin-top: 6px; text-align: center; }
+
+  .preview-area { text-align: center; margin-top: 16px; }
+  .preview-area img { max-width: 100%; max-height: 500px; border: 1px solid #e0e0e0; border-radius: 6px; }
+
+  .status { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-top: 12px; }
+  .status.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+  .status.success { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+  .status.info { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+
+  .hidden { display: none !important; }
+
+  @media (max-width: 600px) {
+    .controls-grid { grid-template-columns: 1fr; }
+    .info-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>📐 PSB Resampler</h1>
+  <p class="subtitle">Read, resize, and export PSD/PSB files as JPG — handles files of any size</p>
+
+  <div class="dropzone" id="dropzone">
+    <div class="dropzone-icon">📁</div>
+    <div class="dropzone-text">Drop a <strong>.PSB</strong> or <strong>.PSD</strong> file here, or click to browse</div>
+    <input type="file" id="fileInput" accept=".psb,.psd" style="display:none">
+  </div>
+
+  <div class="card hidden" id="infoCard">
+    <h2>File Information</h2>
+    <div class="info-grid">
+      <div class="info-item">
+        <label>Filename</label>
+        <div class="value small" id="infoFilename">—</div>
+      </div>
+      <div class="info-item">
+        <label>Dimensions</label>
+        <div class="value" id="infoDimensions">—</div>
+      </div>
+      <div class="info-item">
+        <label>Resolution</label>
+        <div class="value" id="infoDPI">—</div>
+      </div>
+      <div class="info-item">
+        <label>Color Mode</label>
+        <div class="value" id="infoColorMode">—</div>
+      </div>
+      <div class="info-item">
+        <label>Bit Depth</label>
+        <div class="value" id="infoBitDepth">—</div>
+      </div>
+      <div class="info-item">
+        <label>Channels</label>
+        <div class="value" id="infoChannels">—</div>
+      </div>
+      <div class="info-item">
+        <label>File Size</label>
+        <div class="value" id="infoFileSize">—</div>
+      </div>
+      <div class="info-item">
+        <label>Format</label>
+        <div class="value" id="infoFormat">—</div>
+      </div>
+      <div class="info-item" id="iccInfoItem" style="display:none;">
+        <label>ICC Profile</label>
+        <div class="value small" id="infoICC">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card hidden" id="controlsCard">
+    <h2>Resample Settings</h2>
+    <div class="controls-grid">
+      <div>
+        <div class="form-group">
+          <label>Width (px)</label>
+          <input type="number" id="targetWidth" min="1" max="30000">
+        </div>
+      </div>
+      <button class="link-btn locked" id="lockBtn" title="Lock aspect ratio">🔗</button>
+      <div>
+        <div class="form-group">
+          <label>Height (px)</label>
+          <input type="number" id="targetHeight" min="1" max="30000">
+        </div>
+      </div>
+    </div>
+    <div class="dpi-row">
+      <div class="form-group">
+        <label>Target DPI</label>
+        <input type="number" id="targetDPI" min="1" max="2400" placeholder="Enter DPI to auto-calc size">
+      </div>
+      <div class="form-group">
+        <label>Scale %</label>
+        <input type="number" id="scalePercent" min="1" max="100" placeholder="e.g. 50">
+      </div>
+    </div>
+    <div class="form-group" style="margin-top: 12px;">
+      <label>JPG Quality</label>
+      <div class="slider-row">
+        <input type="range" id="jpgQuality" min="1" max="100" value="92">
+        <span class="slider-val" id="qualityVal">92</span>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="resampleBtn" disabled>⚙️ Resample & Save JPG</button>
+    </div>
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar-outer">
+        <div class="progress-bar-inner" id="progressBar"></div>
+      </div>
+      <div class="progress-text" id="progressText">Preparing...</div>
+    </div>
+    <div id="statusArea"></div>
+  </div>
+
+  <div class="card hidden" id="resultCard">
+    <h2>Result</h2>
+    <div class="btn-row" style="margin-top:0; margin-bottom: 12px;">
+      <button class="btn btn-download" id="downloadBtn">⬇️ Download JPG</button>
+      <span id="resultInfo" style="align-self:center; font-size:13px; color:#666;"></span>
+    </div>
+    <div class="preview-area">
+      <img id="previewImg" alt="Preview">
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// PSB/PSD Streaming Parser + Resampler
+// ICC profile-aware CMYK → RGB conversion
+// ============================================================
+
+const COLOR_MODES = {
+  0: 'Bitmap', 1: 'Grayscale', 2: 'Indexed', 3: 'RGB',
+  4: 'CMYK', 7: 'Multichannel', 8: 'Duotone', 9: 'Lab'
+};
+
+// ---- Web Worker (background thread) ----
+const WORKER_CODE = `
+'use strict';
+
+// === Low-level read ===
+async function readBytes(file, offset, length) {
+  const end = Math.min(offset + length, file.size);
+  const buf = await file.slice(offset, end).arrayBuffer();
+  return { buffer: buf, view: new DataView(buf), bytes: new Uint8Array(buf) };
+}
+
+// === PSD Header ===
+async function parseHeader(file) {
+  const { view, bytes } = await readBytes(file, 0, 26);
+  const sig = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+  if (sig !== '8BPS') throw new Error('Not a valid PSD/PSB file');
+  const version = view.getUint16(4);
+  if (version !== 1 && version !== 2) throw new Error('Unknown PSD version: ' + version);
+  return {
+    version, isPSB: version === 2,
+    channels: view.getUint16(12),
+    height: view.getUint32(14),
+    width: view.getUint32(18),
+    bitDepth: view.getUint16(22),
+    colorMode: view.getUint16(24)
+  };
+}
+
+// === Image Resources: DPI (0x03ED) and ICC Profile (0x040F) ===
+async function parseImageResources(file, resStart, resLength) {
+  let dpiH = 72, dpiV = 72;
+  let iccProfileData = null;
+  let iccProfileName = '';
+
+  if (resLength === 0) return { dpiH, dpiV, iccProfileData, iccProfileName };
+  const readLen = Math.min(resLength, 8 * 1024 * 1024);
+  const { view, bytes } = await readBytes(file, resStart, readLen);
+  let pos = 0;
+
+  while (pos + 12 <= readLen) {
+    const blockSig = String.fromCharCode(bytes[pos], bytes[pos+1], bytes[pos+2], bytes[pos+3]);
+    if (blockSig !== '8BIM' && blockSig !== 'MeSa') break;
+    pos += 4;
+    const resourceId = view.getUint16(pos); pos += 2;
+    const nameLen = bytes[pos]; pos += 1;
+    const skip = nameLen === 0 ? 1 : (nameLen % 2 === 0 ? nameLen + 1 : nameLen);
+    pos += skip;
+    if (pos + 4 > readLen) break;
+    const dataLen = view.getUint32(pos); pos += 4;
+    if (pos + dataLen > readLen) break;
+
+    if (resourceId === 0x03ED && dataLen >= 16) {
+      dpiH = view.getUint32(pos) >> 16;
+      dpiV = view.getUint32(pos + 8) >> 16;
+      if (dpiH === 0) dpiH = 72;
+      if (dpiV === 0) dpiV = 72;
+    }
+
+    if (resourceId === 0x040F && dataLen > 128) {
+      iccProfileData = bytes.slice(pos, pos + dataLen);
+      // Extract profile description from ICC header
+      try {
+        const descOffset = 128; // after header, read tag table
+        const tagCount = new DataView(iccProfileData.buffer, iccProfileData.byteOffset + 128, 4).getUint32(0);
+        const tagTableStart = 132;
+        for (let t = 0; t < tagCount && t < 100; t++) {
+          const tagOff = tagTableStart + t * 12;
+          if (tagOff + 12 > iccProfileData.length) break;
+          const tagSig = String.fromCharCode(
+            iccProfileData[tagOff], iccProfileData[tagOff+1],
+            iccProfileData[tagOff+2], iccProfileData[tagOff+3]);
+          if (tagSig === 'desc') {
+            const tOff = new DataView(iccProfileData.buffer, iccProfileData.byteOffset + tagOff + 4, 4).getUint32(0);
+            const tLen = new DataView(iccProfileData.buffer, iccProfileData.byteOffset + tagOff + 8, 4).getUint32(0);
+            if (tOff + 12 < iccProfileData.length) {
+              const typeSig = String.fromCharCode(
+                iccProfileData[tOff], iccProfileData[tOff+1],
+                iccProfileData[tOff+2], iccProfileData[tOff+3]);
+              if (typeSig === 'desc') {
+                const strLen = new DataView(iccProfileData.buffer, iccProfileData.byteOffset + tOff + 8, 4).getUint32(0);
+                const nameBytes = iccProfileData.slice(tOff + 12, tOff + 12 + Math.min(strLen - 1, 200));
+                iccProfileName = new TextDecoder('ascii').decode(nameBytes).replace(/\\0/g, '');
+              } else if (typeSig === 'mluc') {
+                // Multi-localized Unicode
+                const recCount = new DataView(iccProfileData.buffer, iccProfileData.byteOffset + tOff + 8, 4).getUint32(0);
+                if (recCount > 0 && tOff + 24 < iccProfileData.length) {
+                  const sLen = new DataView(iccProfileData.buffer, iccProfileData.byteOffset + tOff + 20, 4).getUint32(0);
+                  const sOff = new DataView(iccProfileData.buffer, iccProfileData.byteOffset + tOff + 24, 4).getUint32(0);
+                  if (tOff + sOff + sLen <= iccProfileData.length) {
+                    const raw = iccProfileData.slice(tOff + sOff, tOff + sOff + sLen);
+                    // UTF-16BE
+                    let str = '';
+                    for (let i = 0; i + 1 < raw.length; i += 2) {
+                      const ch = (raw[i] << 8) | raw[i+1];
+                      if (ch === 0) break;
+                      str += String.fromCharCode(ch);
+                    }
+                    iccProfileName = str;
+                  }
+                }
+              }
+            }
+            break;
+          }
+        }
+      } catch(e) { /* ignore name parse errors */ }
+    }
+
+    pos += dataLen + (dataLen % 2);
+  }
+
+  return { dpiH, dpiV, iccProfileData, iccProfileName };
+}
+
+// === ICC Profile A2B Parser ===
+// Parses the A2B0 (perceptual) tag to extract input curves, CLUT, and output curves
+function parseICCProfileA2B(iccData) {
+  if (!iccData || iccData.length < 132) return null;
+  const dv = new DataView(iccData.buffer, iccData.byteOffset, iccData.length);
+
+  // Read tag table
+  const tagCount = dv.getUint32(128);
+  const tags = [];
+  for (let i = 0; i < tagCount && i < 100; i++) {
+    const off = 132 + i * 12;
+    if (off + 12 > iccData.length) break;
+    const sig = String.fromCharCode(iccData[off], iccData[off+1], iccData[off+2], iccData[off+3]);
+    tags.push({ sig, offset: dv.getUint32(off + 4), size: dv.getUint32(off + 8) });
+  }
+
+  // Find A2B0 (perceptual), fall back to A2B1 (relative colorimetric), then A2B2
+  let a2bTag = tags.find(t => t.sig === 'A2B0')
+            || tags.find(t => t.sig === 'A2B1')
+            || tags.find(t => t.sig === 'A2B2');
+  if (!a2bTag) return null;
+
+  const tOff = a2bTag.offset;
+  const tSize = a2bTag.size;
+  if (tOff + tSize > iccData.length || tSize < 12) return null;
+
+  const typeSig = String.fromCharCode(
+    iccData[tOff], iccData[tOff+1], iccData[tOff+2], iccData[tOff+3]);
+
+  if (typeSig === 'mft1') return parseLut8(iccData, tOff, tSize);
+  if (typeSig === 'mft2') return parseLut16(iccData, tOff, tSize);
+  if (typeSig === 'mAB ') return parseLutAToB(iccData, tOff, tSize);
+
+  return null; // unsupported type
+}
+
+// --- lut8Type ('mft1') ---
+function parseLut8(data, off, size) {
+  const dv = new DataView(data.buffer, data.byteOffset, data.length);
+  const inCh = data[off + 8];
+  const outCh = data[off + 9];
+  const gridPts = data[off + 10];
+  if (inCh < 1 || outCh < 1 || gridPts < 2) return null;
+
+  let pos = off + 48;
+
+  // Input curves: 256 entries per channel, uint8 → normalized float
+  const inputCurves = [];
+  for (let c = 0; c < inCh; c++) {
+    const curve = new Float32Array(256);
+    for (let i = 0; i < 256; i++) curve[i] = data[pos++] / 255;
+    inputCurves.push(curve);
+  }
+
+  // CLUT
+  const gridTotal = Math.pow(gridPts, inCh);
+  const clutSize = gridTotal * outCh;
+  const clutData = new Float32Array(clutSize);
+  for (let i = 0; i < clutSize; i++) clutData[i] = data[pos++] / 255;
+
+  // Output curves: 256 entries per channel
+  const outputCurves = [];
+  for (let c = 0; c < outCh; c++) {
+    const curve = new Float32Array(256);
+    for (let i = 0; i < 256; i++) curve[i] = data[pos++] / 255;
+    outputCurves.push(curve);
+  }
+
+  // Build grid points array (uniform for mft1)
+  const gridPointsArr = new Array(inCh).fill(gridPts);
+
+  return { inputCurves, outputCurves, clutData, gridPoints: gridPointsArr, inCh, outCh };
+}
+
+// --- lut16Type ('mft2') ---
+function parseLut16(data, off, size) {
+  const dv = new DataView(data.buffer, data.byteOffset, data.length);
+  const inCh = data[off + 8];
+  const outCh = data[off + 9];
+  const gridPts = data[off + 10];
+  const inEntries = dv.getUint16(off + 48);
+  const outEntries = dv.getUint16(off + 50);
+  if (inCh < 1 || outCh < 1 || gridPts < 2) return null;
+
+  let pos = off + 52;
+
+  // Input curves: inEntries per channel, uint16
+  const inputCurves = [];
+  for (let c = 0; c < inCh; c++) {
+    const curve = new Float32Array(inEntries);
+    for (let i = 0; i < inEntries; i++) {
+      curve[i] = dv.getUint16(pos) / 65535; pos += 2;
+    }
+    inputCurves.push(curve);
+  }
+
+  // CLUT
+  const gridTotal = Math.pow(gridPts, inCh);
+  const clutSize = gridTotal * outCh;
+  const clutData = new Float32Array(clutSize);
+  for (let i = 0; i < clutSize; i++) {
+    clutData[i] = dv.getUint16(pos) / 65535; pos += 2;
+  }
+
+  // Output curves
+  const outputCurves = [];
+  for (let c = 0; c < outCh; c++) {
+    const curve = new Float32Array(outEntries);
+    for (let i = 0; i < outEntries; i++) {
+      curve[i] = dv.getUint16(pos) / 65535; pos += 2;
+    }
+    outputCurves.push(curve);
+  }
+
+  const gridPointsArr = new Array(inCh).fill(gridPts);
+  return { inputCurves, outputCurves, clutData, gridPoints: gridPointsArr, inCh, outCh };
+}
+
+// --- lutAToBType ('mAB ') ---
+function parseLutAToB(data, off, size) {
+  const dv = new DataView(data.buffer, data.byteOffset, data.length);
+  const inCh = data[off + 8];
+  const outCh = data[off + 9];
+  if (inCh < 1 || outCh < 1) return null;
+
+  const bCurvesOff = dv.getUint32(off + 12);
+  const matrixOff  = dv.getUint32(off + 16);
+  const mCurvesOff = dv.getUint32(off + 20);
+  const clutOff    = dv.getUint32(off + 24);
+  const aCurvesOff = dv.getUint32(off + 28);
+
+  // Parse curves helper
+  function parseCurvesSet(relOff, numCh) {
+    if (relOff === 0) return null;
+    const curves = [];
+    let cPos = off + relOff;
+    for (let c = 0; c < numCh; c++) {
+      if (cPos + 12 > data.length) return null;
+      const curveSig = String.fromCharCode(data[cPos], data[cPos+1], data[cPos+2], data[cPos+3]);
+      if (curveSig === 'curv') {
+        const count = dv.getUint32(cPos + 8);
+        if (count === 0) {
+          // Identity
+          curves.push(null); // null = identity
+          cPos += 12;
+        } else if (count === 1) {
+          // Gamma
+          const gamma = dv.getUint16(cPos + 12) / 256;
+          const curve = new Float32Array(4096);
+          for (let i = 0; i < 4096; i++) curve[i] = Math.pow(i / 4095, gamma);
+          curves.push(curve);
+          cPos += 14;
+        } else {
+          const curve = new Float32Array(count);
+          for (let i = 0; i < count; i++) curve[i] = dv.getUint16(cPos + 12 + i * 2) / 65535;
+          curves.push(curve);
+          cPos += 12 + count * 2;
+        }
+      } else if (curveSig === 'para') {
+        const funcType = dv.getUint16(cPos + 8);
+        // Simple gamma (type 0): Y = X^g
+        if (funcType === 0) {
+          const g = dv.getInt32(cPos + 12) / 65536;
+          const curve = new Float32Array(4096);
+          for (let i = 0; i < 4096; i++) curve[i] = Math.pow(i / 4095, g);
+          curves.push(curve);
+          cPos += 16;
+        } else {
+          // More complex parametric — build a 4096-entry LUT
+          // Type 1: (aX+b)^g for X >= -b/a, else 0
+          // Type 2: (aX+b)^g + c for X >= -b/a, else c
+          // Type 3: (aX+b)^g for X >= d, else cX
+          // Type 4: (aX+b)^g + e for X >= d, else cX + f
+          const params = [];
+          const paramCounts = [1, 3, 4, 5, 7];
+          const pc = paramCounts[funcType] || 1;
+          for (let p = 0; p < pc; p++) {
+            params.push(dv.getInt32(cPos + 12 + p * 4) / 65536);
+          }
+          const curve = new Float32Array(4096);
+          for (let i = 0; i < 4096; i++) {
+            const x = i / 4095;
+            let y = 0;
+            if (funcType === 1) {
+              const [g, a, b] = params;
+              y = x >= -b/a ? Math.pow(a * x + b, g) : 0;
+            } else if (funcType === 2) {
+              const [g, a, b, c] = params;
+              y = x >= -b/a ? Math.pow(a * x + b, g) + c : c;
+            } else if (funcType === 3) {
+              const [g, a, b, c, d] = params;
+              y = x >= d ? Math.pow(a * x + b, g) : c * x;
+            } else if (funcType === 4) {
+              const [g, a, b, c, d, e, f] = params;
+              y = x >= d ? Math.pow(a * x + b, g) + e : c * x + f;
+            }
+            curve[i] = Math.max(0, Math.min(1, y));
+          }
+          curves.push(curve);
+          cPos += 12 + pc * 4;
+        }
+      } else {
+        return null; // unknown curve type
+      }
+      // Align to 4-byte boundary
+      cPos = (cPos + 3) & ~3;
+    }
+    return curves;
+  }
+
+  // A curves (input side)
+  const aCurves = parseCurvesSet(aCurvesOff, inCh);
+  // B curves (output side)
+  const bCurves = parseCurvesSet(bCurvesOff, outCh);
+
+  // CLUT
+  if (clutOff === 0) return null; // no CLUT = can't do the conversion
+  const cStart = off + clutOff;
+  if (cStart + 20 > data.length) return null;
+
+  const gridPointsArr = [];
+  for (let i = 0; i < inCh; i++) gridPointsArr.push(data[cStart + i]);
+  // Padding to 16 bytes
+  const precision = data[cStart + 16]; // 1 = uint8, 2 = uint16
+
+  let gridTotal = 1;
+  for (let i = 0; i < inCh; i++) gridTotal *= gridPointsArr[i];
+  const clutSize = gridTotal * outCh;
+
+  const clutData = new Float32Array(clutSize);
+  let cPos = cStart + 20;
+  if (precision === 1) {
+    for (let i = 0; i < clutSize; i++) clutData[i] = data[cPos++] / 255;
+  } else {
+    for (let i = 0; i < clutSize; i++) { clutData[i] = dv.getUint16(cPos) / 65535; cPos += 2; }
+  }
+
+  // Convert A curves and B curves into the same format as lut8/lut16
+  // A curves = input, B curves = output
+  const inputCurves = [];
+  for (let c = 0; c < inCh; c++) {
+    if (aCurves && aCurves[c]) {
+      inputCurves.push(aCurves[c]);
+    } else {
+      // identity: build a linear curve
+      const curve = new Float32Array(256);
+      for (let i = 0; i < 256; i++) curve[i] = i / 255;
+      inputCurves.push(curve);
+    }
+  }
+  const outputCurves = [];
+  for (let c = 0; c < outCh; c++) {
+    if (bCurves && bCurves[c]) {
+      outputCurves.push(bCurves[c]);
+    } else {
+      const curve = new Float32Array(256);
+      for (let i = 0; i < 256; i++) curve[i] = i / 255;
+      outputCurves.push(curve);
+    }
+  }
+
+  return { inputCurves, outputCurves, clutData, gridPoints: gridPointsArr, inCh, outCh };
+}
+
+
+// === Curve lookup with interpolation ===
+function lookupCurve(value, curve) {
+  // value: 0.0-1.0, curve: Float32Array
+  const n = curve.length;
+  const pos = value * (n - 1);
+  const lo = Math.floor(pos);
+  const hi = Math.min(lo + 1, n - 1);
+  const frac = pos - lo;
+  return curve[lo] * (1 - frac) + curve[hi] * frac;
+}
+
+
+// === 4D CLUT quadrilinear interpolation ===
+function clutLookup4D(c0, c1, c2, c3, pipeline) {
+  const { clutData, gridPoints, outCh } = pipeline;
+  const g0 = gridPoints[0], g1 = gridPoints[1], g2 = gridPoints[2], g3 = gridPoints[3];
+
+  // Scale to grid positions
+  const p0 = c0 * (g0 - 1), p1 = c1 * (g1 - 1), p2 = c2 * (g2 - 1), p3 = c3 * (g3 - 1);
+  const i0 = Math.min(Math.floor(p0), g0 - 2), f0 = p0 - i0;
+  const i1 = Math.min(Math.floor(p1), g1 - 2), f1 = p1 - i1;
+  const i2 = Math.min(Math.floor(p2), g2 - 2), f2 = p2 - i2;
+  const i3 = Math.min(Math.floor(p3), g3 - 2), f3 = p3 - i3;
+
+  const r0 = 1 - f0, r1 = 1 - f1, r2 = 1 - f2, r3 = 1 - f3;
+
+  // Strides
+  const s3 = outCh;
+  const s2 = g3 * s3;
+  const s1 = g2 * s2;
+  const s0 = g1 * s1;
+
+  const base = i0 * s0 + i1 * s1 + i2 * s2 + i3 * s3;
+
+  // Interpolate all output channels
+  const result = new Float32Array(outCh);
+  for (let o = 0; o < outCh; o++) {
+    // 16 corners of the 4D hypercube
+    let v = 0;
+    v += r0 * r1 * r2 * r3 * clutData[base + o];
+    v += r0 * r1 * r2 * f3 * clutData[base + s3 + o];
+    v += r0 * r1 * f2 * r3 * clutData[base + s2 + o];
+    v += r0 * r1 * f2 * f3 * clutData[base + s2 + s3 + o];
+    v += r0 * f1 * r2 * r3 * clutData[base + s1 + o];
+    v += r0 * f1 * r2 * f3 * clutData[base + s1 + s3 + o];
+    v += r0 * f1 * f2 * r3 * clutData[base + s1 + s2 + o];
+    v += r0 * f1 * f2 * f3 * clutData[base + s1 + s2 + s3 + o];
+    v += f0 * r1 * r2 * r3 * clutData[base + s0 + o];
+    v += f0 * r1 * r2 * f3 * clutData[base + s0 + s3 + o];
+    v += f0 * r1 * f2 * r3 * clutData[base + s0 + s2 + o];
+    v += f0 * r1 * f2 * f3 * clutData[base + s0 + s2 + s3 + o];
+    v += f0 * f1 * r2 * r3 * clutData[base + s0 + s1 + o];
+    v += f0 * f1 * r2 * f3 * clutData[base + s0 + s1 + s3 + o];
+    v += f0 * f1 * f2 * r3 * clutData[base + s0 + s1 + s2 + o];
+    v += f0 * f1 * f2 * f3 * clutData[base + s0 + s1 + s2 + s3 + o];
+    result[o] = v;
+  }
+  return result;
+}
+
+
+// === Full ICC pipeline: CMYK (PSD inverted) → Lab PCS → sRGB ===
+function cmykToRgbICC(c_psd, m_psd, y_psd, k_psd, pipeline) {
+  // PSD stores 0=full ink, 255=no ink. ICC expects 0=no ink, 1=full ink.
+  const c_ink = (255 - c_psd) / 255;
+  const m_ink = (255 - m_psd) / 255;
+  const y_ink = (255 - y_psd) / 255;
+  const k_ink = (255 - k_psd) / 255;
+
+  // 1. Apply input curves
+  const c_cur = lookupCurve(c_ink, pipeline.inputCurves[0]);
+  const m_cur = lookupCurve(m_ink, pipeline.inputCurves[1]);
+  const y_cur = lookupCurve(y_ink, pipeline.inputCurves[2]);
+  const k_cur = lookupCurve(k_ink, pipeline.inputCurves[3]);
+
+  // 2. CLUT interpolation → PCS values (normalized 0-1)
+  const pcs = clutLookup4D(c_cur, m_cur, y_cur, k_cur, pipeline);
+
+  // 3. Apply output curves
+  const L_norm = lookupCurve(pcs[0], pipeline.outputCurves[0]);
+  const a_norm = lookupCurve(pcs[1], pipeline.outputCurves[1]);
+  const b_norm = lookupCurve(pcs[2], pipeline.outputCurves[2]);
+
+  // 4. Decode Lab PCS (ICC v2/v4 encoding)
+  // L: 0..1 → 0..100, a: 0..1 → -128..127, b: 0..1 → -128..127
+  const L = L_norm * 100;
+  const a = a_norm * 255 - 128;
+  const b = b_norm * 255 - 128;
+
+  // 5. Lab → XYZ (D50)
+  const fy = (L + 16) / 116;
+  const fx = a / 500 + fy;
+  const fz = fy - b / 200;
+  const delta = 6 / 29;
+  const d3 = delta * delta * delta;
+  const X = (fx > delta ? fx * fx * fx : (fx - 16/116) * 3 * delta * delta) * 0.9642;
+  const Y = (fy > delta ? fy * fy * fy : (fy - 16/116) * 3 * delta * delta) * 1.0;
+  const Z = (fz > delta ? fz * fz * fz : (fz - 16/116) * 3 * delta * delta) * 0.8249;
+
+  // 6. XYZ (D50) → linear sRGB (includes Bradford D50→D65)
+  let rl =  3.1338561 * X - 1.6168667 * Y - 0.4906146 * Z;
+  let gl = -0.9787684 * X + 1.9161415 * Y + 0.0334540 * Z;
+  let bl =  0.0719453 * X - 0.0544869 * Y + 1.2044888 * Z;
+
+  // 7. sRGB gamma
+  const gamma = v => v > 0.0031308 ? 1.055 * Math.pow(v, 1/2.4) - 0.055 : 12.92 * v;
+  const r = Math.max(0, Math.min(255, Math.round(gamma(Math.max(0, rl)) * 255)));
+  const g = Math.max(0, Math.min(255, Math.round(gamma(Math.max(0, gl)) * 255)));
+  const bv = Math.max(0, Math.min(255, Math.round(gamma(Math.max(0, bl)) * 255)));
+
+  return [r, g, bv];
+}
+
+
+// === Naive CMYK→RGB fallback (no ICC) ===
+function cmykToRgbNaive(c_psd, m_psd, y_psd, k_psd) {
+  return [
+    Math.round(c_psd * k_psd / 255),
+    Math.round(m_psd * k_psd / 255),
+    Math.round(y_psd * k_psd / 255)
+  ];
+}
+
+
+// === PackBits / RLE ===
+function decodePackBits(data, offset, length, expectedLen) {
+  const result = new Uint8Array(expectedLen);
+  let src = offset, dst = 0;
+  const srcEnd = offset + length;
+  while (dst < expectedLen && src < srcEnd) {
+    let n = data[src++];
+    if (n > 128) {
+      const count = 257 - n;
+      const val = data[src++];
+      for (let i = 0; i < count && dst < expectedLen; i++) result[dst++] = val;
+    } else if (n < 128) {
+      const count = n + 1;
+      for (let i = 0; i < count && dst < expectedLen; i++) result[dst++] = data[src++];
+    }
+  }
+  return result;
+}
+
+
+// === Main Decode ===
+async function decode(file, header, targetW, targetH, iccPipeline) {
+  const { isPSB, channels, height, width, bitDepth, colorMode } = header;
+  const bytesPerPixel = bitDepth === 16 ? 2 : (bitDepth === 32 ? 4 : 1);
+
+  // Navigate to composite image data
+  let offset = 26;
+  let { view } = await readBytes(file, offset, 4);
+  offset += 4 + view.getUint32(0);
+
+  ({ view } = await readBytes(file, offset, 4));
+  offset += 4 + view.getUint32(0);
+
+  if (isPSB) {
+    ({ view } = await readBytes(file, offset, 8));
+    offset += 8 + (view.getUint32(0) * 0x100000000 + view.getUint32(4));
+  } else {
+    ({ view } = await readBytes(file, offset, 4));
+    offset += 4 + view.getUint32(0);
+  }
+
+  ({ view } = await readBytes(file, offset, 2));
+  const compression = view.getUint16(0);
+  offset += 2;
+
+  if (compression !== 0 && compression !== 1) {
+    throw new Error('Unsupported compression: ' + (compression === 2 ? 'ZIP' : compression === 3 ? 'ZIP+prediction' : compression) + '. Only Raw and RLE supported.');
+  }
+
+  let readChannels = channels;
+  if (colorMode === 3) readChannels = Math.min(channels, 3);
+  else if (colorMode === 4) readChannels = Math.min(channels, 4);
+  else if (colorMode === 1 || colorMode === 8) readChannels = 1;
+  else if (colorMode === 9) readChannels = Math.min(channels, 3);
+
+  const scaleX = width / targetW;
+  const scaleY = height / targetH;
+  const rgba = new Uint8Array(targetW * targetH * 4);
+
+  const useCMYKicc = (colorMode === 4 && iccPipeline !== null);
+
+  self.postMessage({ type: 'progress', percent: 5,
+    text: useCMYKicc ? 'Decoding with ICC profile...' : 'Decoding composite data...' });
+
+  if (compression === 1) {
+    // RLE
+    const countSize = isPSB ? 4 : 2;
+    const numCounts = channels * height;
+    const countsLen = numCounts * countSize;
+
+    self.postMessage({ type: 'progress', percent: 8, text: 'Reading scanline table...' });
+    const countsBuf = await readBytes(file, offset, countsLen);
+    offset += countsLen;
+
+    const byteCounts = new Uint32Array(numCounts);
+    for (let i = 0; i < numCounts; i++) {
+      byteCounts[i] = isPSB ? countsBuf.view.getUint32(i * 4) : countsBuf.view.getUint16(i * 2);
+    }
+
+    const dataStart = offset;
+    const cumOffsets = new Float64Array(numCounts + 1);
+    cumOffsets[0] = 0;
+    for (let i = 0; i < numCounts; i++) cumOffsets[i + 1] = cumOffsets[i] + byteCounts[i];
+
+    const scanlineLen = width * bytesPerPixel;
+    const READ_CHUNK = 4 * 1024 * 1024;
+    let cachedBuf = null, cachedStart = -1, cachedEnd = -1;
+
+    async function readScanline(channelIdx, row) {
+      const idx = channelIdx * height + row;
+      const scanStart = dataStart + cumOffsets[idx];
+      const scanLen = byteCounts[idx];
+      if (cachedBuf && scanStart >= cachedStart && scanStart + scanLen <= cachedEnd) {
+        return decodePackBits(new Uint8Array(cachedBuf), scanStart - cachedStart, scanLen, scanlineLen);
+      }
+      const readLen = Math.min(READ_CHUNK, file.size - scanStart);
+      const { buffer } = await readBytes(file, scanStart, readLen);
+      cachedBuf = buffer; cachedStart = scanStart; cachedEnd = scanStart + readLen;
+      return decodePackBits(new Uint8Array(buffer), 0, scanLen, scanlineLen);
+    }
+
+    for (let ty = 0; ty < targetH; ty++) {
+      const sy = Math.min(Math.floor(ty * scaleY), height - 1);
+      const channelRows = [];
+      cachedBuf = null;
+
+      for (let c = 0; c < readChannels; c++) {
+        let decoded = await readScanline(c, sy);
+        if (bitDepth === 16) {
+          const row8 = new Uint8Array(width);
+          const dv = new DataView(decoded.buffer, decoded.byteOffset, decoded.byteLength);
+          for (let x = 0; x < width; x++) row8[x] = dv.getUint16(x * 2) >> 8;
+          decoded = row8;
+        } else if (bitDepth === 32) {
+          const row8 = new Uint8Array(width);
+          const dv = new DataView(decoded.buffer, decoded.byteOffset, decoded.byteLength);
+          for (let x = 0; x < width; x++) {
+            row8[x] = Math.max(0, Math.min(255, Math.round(dv.getFloat32(x * 4) * 255)));
+          }
+          decoded = row8;
+        }
+        channelRows.push(decoded);
+      }
+
+      const outRowOffset = ty * targetW * 4;
+
+      if (colorMode === 3) {
+        for (let tx = 0; tx < targetW; tx++) {
+          const sx = Math.min(Math.floor(tx * scaleX), width - 1);
+          const o = outRowOffset + tx * 4;
+          rgba[o] = channelRows[0][sx]; rgba[o+1] = channelRows[1][sx]; rgba[o+2] = channelRows[2][sx]; rgba[o+3] = 255;
+        }
+      } else if (colorMode === 4) {
+        if (useCMYKicc) {
+          for (let tx = 0; tx < targetW; tx++) {
+            const sx = Math.min(Math.floor(tx * scaleX), width - 1);
+            const [r, g, b] = cmykToRgbICC(channelRows[0][sx], channelRows[1][sx], channelRows[2][sx], channelRows[3][sx], iccPipeline);
+            const o = outRowOffset + tx * 4;
+            rgba[o] = r; rgba[o+1] = g; rgba[o+2] = b; rgba[o+3] = 255;
+          }
+        } else {
+          for (let tx = 0; tx < targetW; tx++) {
+            const sx = Math.min(Math.floor(tx * scaleX), width - 1);
+            const [r, g, b] = cmykToRgbNaive(channelRows[0][sx], channelRows[1][sx], channelRows[2][sx], channelRows[3][sx]);
+            const o = outRowOffset + tx * 4;
+            rgba[o] = r; rgba[o+1] = g; rgba[o+2] = b; rgba[o+3] = 255;
+          }
+        }
+      } else if (colorMode === 1 || colorMode === 8) {
+        for (let tx = 0; tx < targetW; tx++) {
+          const sx = Math.min(Math.floor(tx * scaleX), width - 1);
+          const o = outRowOffset + tx * 4;
+          rgba[o] = rgba[o+1] = rgba[o+2] = channelRows[0][sx]; rgba[o+3] = 255;
+        }
+      } else if (colorMode === 9) {
+        for (let tx = 0; tx < targetW; tx++) {
+          const sx = Math.min(Math.floor(tx * scaleX), width - 1);
+          const L = channelRows[0][sx] / 255 * 100;
+          const a = channelRows[1][sx] - 128;
+          const b = channelRows[2][sx] - 128;
+          const fy = (L + 16) / 116;
+          const fx = a / 500 + fy;
+          const fz = fy - b / 200;
+          const delta = 6/29;
+          const X = (fx > delta ? fx*fx*fx : (fx-16/116)*3*delta*delta) * 0.9642;
+          const Y = (fy > delta ? fy*fy*fy : (fy-16/116)*3*delta*delta);
+          const Z = (fz > delta ? fz*fz*fz : (fz-16/116)*3*delta*delta) * 0.8249;
+          let rl = 3.1338561*X - 1.6168667*Y - 0.4906146*Z;
+          let gl = -0.9787684*X + 1.9161415*Y + 0.0334540*Z;
+          let bl = 0.0719453*X - 0.0544869*Y + 1.2044888*Z;
+          const gm = v => v > 0.0031308 ? 1.055*Math.pow(v,1/2.4)-0.055 : 12.92*v;
+          const o = outRowOffset + tx * 4;
+          rgba[o]   = Math.round(Math.max(0,Math.min(1,gm(Math.max(0,rl))))*255);
+          rgba[o+1] = Math.round(Math.max(0,Math.min(1,gm(Math.max(0,gl))))*255);
+          rgba[o+2] = Math.round(Math.max(0,Math.min(1,gm(Math.max(0,bl))))*255);
+          rgba[o+3] = 255;
+        }
+      }
+
+      if (ty % 10 === 0 || ty === targetH - 1) {
+        const pct = 10 + Math.round((ty / targetH) * 85);
+        self.postMessage({ type: 'progress', percent: pct, text: 'Row ' + (ty+1) + ' / ' + targetH + (useCMYKicc ? ' (ICC)' : '') });
+      }
+    }
+
+  } else if (compression === 0) {
+    // Raw uncompressed
+    const scanlineBytes = width * bytesPerPixel;
+    const channelBytes = scanlineBytes * height;
+
+    for (let ty = 0; ty < targetH; ty++) {
+      const sy = Math.min(Math.floor(ty * scaleY), height - 1);
+      const channelRows = [];
+
+      for (let c = 0; c < readChannels; c++) {
+        const rowOffset = offset + c * channelBytes + sy * scanlineBytes;
+        const { bytes } = await readBytes(file, rowOffset, scanlineBytes);
+        let decoded = bytes;
+        if (bitDepth === 16) {
+          const row8 = new Uint8Array(width);
+          const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+          for (let x = 0; x < width; x++) row8[x] = dv.getUint16(x * 2) >> 8;
+          decoded = row8;
+        } else if (bitDepth === 32) {
+          const row8 = new Uint8Array(width);
+          const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+          for (let x = 0; x < width; x++) {
+            row8[x] = Math.max(0, Math.min(255, Math.round(dv.getFloat32(x * 4) * 255)));
+          }
+          decoded = row8;
+        }
+        channelRows.push(decoded);
+      }
+
+      const outRowOffset = ty * targetW * 4;
+      if (colorMode === 3) {
+        for (let tx = 0; tx < targetW; tx++) {
+          const sx = Math.min(Math.floor(tx * scaleX), width - 1);
+          const o = outRowOffset + tx * 4;
+          rgba[o] = channelRows[0][sx]; rgba[o+1] = channelRows[1][sx]; rgba[o+2] = channelRows[2][sx]; rgba[o+3] = 255;
+        }
+      } else if (colorMode === 4) {
+        if (useCMYKicc) {
+          for (let tx = 0; tx < targetW; tx++) {
+            const sx = Math.min(Math.floor(tx * scaleX), width - 1);
+            const [r, g, b] = cmykToRgbICC(channelRows[0][sx], channelRows[1][sx], channelRows[2][sx], channelRows[3][sx], iccPipeline);
+            const o = outRowOffset + tx * 4;
+            rgba[o] = r; rgba[o+1] = g; rgba[o+2] = b; rgba[o+3] = 255;
+          }
+        } else {
+          for (let tx = 0; tx < targetW; tx++) {
+            const sx = Math.min(Math.floor(tx * scaleX), width - 1);
+            const [r, g, b] = cmykToRgbNaive(channelRows[0][sx], channelRows[1][sx], channelRows[2][sx], channelRows[3][sx]);
+            const o = outRowOffset + tx * 4;
+            rgba[o] = r; rgba[o+1] = g; rgba[o+2] = b; rgba[o+3] = 255;
+          }
+        }
+      } else if (colorMode === 1 || colorMode === 8) {
+        for (let tx = 0; tx < targetW; tx++) {
+          const sx = Math.min(Math.floor(tx * scaleX), width - 1);
+          const o = outRowOffset + tx * 4;
+          rgba[o] = rgba[o+1] = rgba[o+2] = channelRows[0][sx]; rgba[o+3] = 255;
+        }
+      }
+
+      if (ty % 10 === 0) {
+        const pct = 10 + Math.round((ty / targetH) * 85);
+        self.postMessage({ type: 'progress', percent: pct, text: 'Row ' + (ty+1) + ' / ' + targetH });
+      }
+    }
+  }
+
+  self.postMessage({ type: 'progress', percent: 98, text: 'Finalizing...' });
+  return rgba;
+}
+
+
+// === Worker message handler ===
+self.onmessage = async function(e) {
+  const { file, targetW, targetH } = e.data;
+  try {
+    self.postMessage({ type: 'progress', percent: 2, text: 'Reading header...' });
+    const header = await parseHeader(file);
+
+    // Navigate sections
+    let offset = 26;
+    let { view } = await readBytes(file, offset, 4);
+    const colorModeLen = view.getUint32(0);
+    offset += 4 + colorModeLen;
+
+    ({ view } = await readBytes(file, offset, 4));
+    const imgResLen = view.getUint32(0);
+    const imgResStart = offset + 4;
+
+    // Parse image resources (DPI + ICC)
+    self.postMessage({ type: 'progress', percent: 3, text: 'Reading image resources...' });
+    const resources = await parseImageResources(file, imgResStart, imgResLen);
+    header.dpiH = resources.dpiH;
+    header.dpiV = resources.dpiV;
+    header.iccProfileName = resources.iccProfileName || '';
+
+    // Parse ICC profile for CMYK files
+    let iccPipeline = null;
+    if (header.colorMode === 4 && resources.iccProfileData) {
+      self.postMessage({ type: 'progress', percent: 4, text: 'Parsing ICC profile...' });
+      iccPipeline = parseICCProfileA2B(resources.iccProfileData);
+      header.hasICC = (iccPipeline !== null);
+      if (!iccPipeline) {
+        header.iccWarning = 'ICC profile found but A2B table unsupported — using fallback conversion';
+      }
+    } else if (header.colorMode === 4) {
+      header.hasICC = false;
+      header.iccWarning = 'No ICC profile embedded — using approximate CMYK→RGB conversion';
+    }
+
+    self.postMessage({ type: 'header', header });
+
+    const rgba = await decode(file, header, targetW, targetH, iccPipeline);
+    self.postMessage({ type: 'done', rgba: rgba.buffer, width: targetW, height: targetH }, [rgba.buffer]);
+
+  } catch (err) {
+    self.postMessage({ type: 'error', message: err.message || String(err) });
+  }
+};
+`;
+
+// ---- Main Thread ----
+const COLOR_MODES_DISPLAY = COLOR_MODES;
+
+let currentFile = null;
+let currentHeader = null;
+let aspectLocked = true;
+let sourceAspect = 1;
+let resultBlobUrl = null;
+let resultFilename = '';
+
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const infoCard = document.getElementById('infoCard');
+const controlsCard = document.getElementById('controlsCard');
+const resultCard = document.getElementById('resultCard');
+const resampleBtn = document.getElementById('resampleBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const lockBtn = document.getElementById('lockBtn');
+const progressWrap = document.getElementById('progressWrap');
+const progressBar = document.getElementById('progressBar');
+const progressText = document.getElementById('progressText');
+const statusArea = document.getElementById('statusArea');
+const targetWidthInput = document.getElementById('targetWidth');
+const targetHeightInput = document.getElementById('targetHeight');
+const targetDPIInput = document.getElementById('targetDPI');
+const scalePercentInput = document.getElementById('scalePercent');
+const jpgQualityInput = document.getElementById('jpgQuality');
+const qualityVal = document.getElementById('qualityVal');
+
+function formatSize(bytes) {
+  if (bytes >= 1e9) return (bytes / 1e9).toFixed(2) + ' GB';
+  if (bytes >= 1e6) return (bytes / 1e6).toFixed(1) + ' MB';
+  if (bytes >= 1e3) return (bytes / 1e3).toFixed(0) + ' KB';
+  return bytes + ' B';
+}
+
+function showStatus(msg, type) {
+  statusArea.innerHTML = '<div class="status ' + type + '">' + msg + '</div>';
+}
+function clearStatus() { statusArea.innerHTML = ''; }
+
+// File drop/select
+dropzone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', (e) => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', (e) => {
+  e.preventDefault(); dropzone.classList.remove('dragover');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+
+async function handleFile(file) {
+  currentFile = file;
+  resultCard.classList.add('hidden');
+  clearStatus();
+
+  try {
+    // Quick header read
+    const buf = await file.slice(0, 26).arrayBuffer();
+    const view = new DataView(buf);
+    const bytes = new Uint8Array(buf);
+    const sig = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+    if (sig !== '8BPS') throw new Error('Not a valid PSD/PSB file');
+
+    const version = view.getUint16(4);
+    const isPSB = version === 2;
+    const channels = view.getUint16(12);
+    const height = view.getUint32(14);
+    const width = view.getUint32(18);
+    const bitDepth = view.getUint16(22);
+    const colorMode = view.getUint16(24);
+
+    // Navigate to image resources for DPI
+    let offset = 26;
+    let hdr = await file.slice(offset, offset + 4).arrayBuffer();
+    const colorModeLen = new DataView(hdr).getUint32(0);
+    offset += 4 + colorModeLen;
+
+    hdr = await file.slice(offset, offset + 4).arrayBuffer();
+    const imgResLen = new DataView(hdr).getUint32(0);
+    const imgResStart = offset + 4;
+
+    let dpiH = 72, dpiV = 72;
+    if (imgResLen > 0) {
+      const readLen = Math.min(imgResLen, 65536);
+      const resBuf = await file.slice(imgResStart, imgResStart + readLen).arrayBuffer();
+      const resBytes = new Uint8Array(resBuf);
+      const resView = new DataView(resBuf);
+      let pos = 0;
+      while (pos + 12 <= resBytes.length) {
+        const blockSig = String.fromCharCode(resBytes[pos], resBytes[pos+1], resBytes[pos+2], resBytes[pos+3]);
+        if (blockSig !== '8BIM' && blockSig !== 'MeSa') break;
+        pos += 4;
+        const resId = resView.getUint16(pos); pos += 2;
+        const nameLen = resBytes[pos]; pos += 1;
+        const skip = nameLen === 0 ? 1 : (nameLen % 2 === 0 ? nameLen + 1 : nameLen);
+        pos += skip;
+        if (pos + 4 > resBytes.length) break;
+        const dataLen = resView.getUint32(pos); pos += 4;
+        if (resId === 0x03ED && dataLen >= 16 && pos + 16 <= resBytes.length) {
+          dpiH = resView.getUint32(pos) >> 16;
+          dpiV = resView.getUint32(pos + 8) >> 16;
+          if (dpiH === 0) dpiH = 72;
+          if (dpiV === 0) dpiV = 72;
+          break;
+        }
+        pos += dataLen + (dataLen % 2);
+      }
+    }
+
+    currentHeader = { version, isPSB, channels, height, width, bitDepth, colorMode, dpiH, dpiV };
+    sourceAspect = width / height;
+
+    document.getElementById('infoFilename').textContent = file.name;
+    document.getElementById('infoDimensions').textContent = width.toLocaleString() + ' × ' + height.toLocaleString();
+    document.getElementById('infoDPI').textContent = dpiH + (dpiH !== dpiV ? ' × ' + dpiV : '') + ' PPI';
+    document.getElementById('infoColorMode').textContent = COLOR_MODES[colorMode] || 'Unknown (' + colorMode + ')';
+    document.getElementById('infoBitDepth').textContent = bitDepth + '-bit';
+    document.getElementById('infoChannels').textContent = channels;
+    document.getElementById('infoFileSize').textContent = formatSize(file.size);
+    document.getElementById('infoFormat').textContent = isPSB ? 'PSB (Large)' : 'PSD';
+
+    // ICC info will be populated by the worker
+    document.getElementById('iccInfoItem').style.display = colorMode === 4 ? '' : 'none';
+    document.getElementById('infoICC').textContent = colorMode === 4 ? 'Checking...' : '';
+
+    infoCard.classList.remove('hidden');
+    controlsCard.classList.remove('hidden');
+
+    const maxDim = 8000;
+    let defW = width, defH = height;
+    if (width > maxDim || height > maxDim) {
+      if (width >= height) { defW = maxDim; defH = Math.round(maxDim / sourceAspect); }
+      else { defH = maxDim; defW = Math.round(maxDim * sourceAspect); }
+    }
+    targetWidthInput.value = defW;
+    targetHeightInput.value = defH;
+    targetDPIInput.value = '';
+    scalePercentInput.value = '';
+    resampleBtn.disabled = false;
+
+    if (colorMode === 4) {
+      showStatus('📋 CMYK file detected — ICC profile will be used for accurate RGB conversion.', 'info');
+    } else if (colorMode === 9) {
+      showStatus('ℹ️ Lab color file — will be converted to sRGB.', 'info');
+    } else if (colorMode === 0 || colorMode === 2 || colorMode === 7) {
+      showStatus('⚠️ ' + (COLOR_MODES[colorMode] || 'Unknown') + ' color mode may not be fully supported.', 'error');
+    }
+
+  } catch (err) {
+    showStatus('❌ ' + err.message, 'error');
+    infoCard.classList.add('hidden');
+    controlsCard.classList.add('hidden');
+  }
+}
+
+// Linked dimensions
+lockBtn.addEventListener('click', () => {
+  aspectLocked = !aspectLocked;
+  lockBtn.textContent = aspectLocked ? '🔗' : '🔓';
+  lockBtn.className = 'link-btn ' + (aspectLocked ? 'locked' : 'unlocked');
+});
+
+targetWidthInput.addEventListener('input', () => {
+  if (aspectLocked && currentHeader) {
+    targetHeightInput.value = Math.round((parseInt(targetWidthInput.value) || 1) / sourceAspect);
+  }
+  targetDPIInput.value = ''; scalePercentInput.value = '';
+});
+
+targetHeightInput.addEventListener('input', () => {
+  if (aspectLocked && currentHeader) {
+    targetWidthInput.value = Math.round((parseInt(targetHeightInput.value) || 1) * sourceAspect);
+  }
+  targetDPIInput.value = ''; scalePercentInput.value = '';
+});
+
+targetDPIInput.addEventListener('input', () => {
+  if (!currentHeader) return;
+  const dpi = parseInt(targetDPIInput.value);
+  if (!dpi || dpi <= 0) return;
+  const scale = dpi / currentHeader.dpiH;
+  targetWidthInput.value = Math.max(1, Math.round(currentHeader.width * scale));
+  targetHeightInput.value = Math.max(1, Math.round(currentHeader.height * scale));
+  scalePercentInput.value = '';
+});
+
+scalePercentInput.addEventListener('input', () => {
+  if (!currentHeader) return;
+  const pct = parseFloat(scalePercentInput.value);
+  if (!pct || pct <= 0) return;
+  const scale = pct / 100;
+  targetWidthInput.value = Math.max(1, Math.round(currentHeader.width * scale));
+  targetHeightInput.value = Math.max(1, Math.round(currentHeader.height * scale));
+  targetDPIInput.value = '';
+});
+
+jpgQualityInput.addEventListener('input', () => { qualityVal.textContent = jpgQualityInput.value; });
+
+// Resample
+resampleBtn.addEventListener('click', async () => {
+  if (!currentFile || !currentHeader) return;
+
+  const targetW = parseInt(targetWidthInput.value) || 1;
+  const targetH = parseInt(targetHeightInput.value) || 1;
+  const quality = parseInt(jpgQualityInput.value) / 100;
+
+  if (targetW > 30000 || targetH > 30000) {
+    showStatus('❌ Target dimensions too large (max 30,000 px per side).', 'error'); return;
+  }
+  if (targetW * targetH > 268000000) {
+    showStatus('❌ Target pixel count too high for browser canvas (~268M max).', 'error'); return;
+  }
+
+  resampleBtn.disabled = true;
+  progressWrap.style.display = 'block';
+  resultCard.classList.add('hidden');
+  clearStatus();
+
+  const blob = new Blob([WORKER_CODE], { type: 'application/javascript' });
+  const workerUrl = URL.createObjectURL(blob);
+  const worker = new Worker(workerUrl);
+  const startTime = performance.now();
+
+  worker.onmessage = (e) => {
+    const msg = e.data;
+    if (msg.type === 'progress') {
+      progressBar.style.width = msg.percent + '%';
+      progressText.textContent = msg.text;
+    } else if (msg.type === 'header') {
+      // Update ICC info from worker
+      if (msg.header.iccProfileName) {
+        document.getElementById('iccInfoItem').style.display = '';
+        document.getElementById('infoICC').textContent = msg.header.iccProfileName;
+      }
+      if (msg.header.hasICC === true) {
+        document.getElementById('infoICC').textContent =
+          (msg.header.iccProfileName || 'Embedded') + ' ✅';
+      } else if (msg.header.hasICC === false) {
+        document.getElementById('iccInfoItem').style.display = '';
+        document.getElementById('infoICC').textContent = 'None ⚠️';
+      }
+      if (msg.header.iccWarning) {
+        showStatus('⚠️ ' + msg.header.iccWarning, 'info');
+      }
+    } else if (msg.type === 'done') {
+      const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+      const canvas = document.createElement('canvas');
+      canvas.width = msg.width; canvas.height = msg.height;
+      const ctx = canvas.getContext('2d');
+      const imgData = new ImageData(new Uint8ClampedArray(msg.rgba), msg.width, msg.height);
+      ctx.putImageData(imgData, 0, 0);
+
+      canvas.toBlob((jpgBlob) => {
+        if (resultBlobUrl) URL.revokeObjectURL(resultBlobUrl);
+        resultBlobUrl = URL.createObjectURL(jpgBlob);
+        const baseName = currentFile.name.replace(/\.(psb|psd)$/i, '');
+        resultFilename = baseName + '_' + msg.width + 'x' + msg.height + '.jpg';
+        document.getElementById('previewImg').src = resultBlobUrl;
+        document.getElementById('resultInfo').textContent =
+          msg.width + ' × ' + msg.height + ' · ' + formatSize(jpgBlob.size) + ' · ' + elapsed + 's';
+        resultCard.classList.remove('hidden');
+        progressWrap.style.display = 'none';
+        resampleBtn.disabled = false;
+        showStatus('✅ Done! ' + msg.width + '×' + msg.height + ' JPG ready (' + formatSize(jpgBlob.size) + ')', 'success');
+        worker.terminate(); URL.revokeObjectURL(workerUrl);
+      }, 'image/jpeg', quality);
+
+    } else if (msg.type === 'error') {
+      showStatus('❌ ' + msg.message, 'error');
+      progressWrap.style.display = 'none';
+      resampleBtn.disabled = false;
+      worker.terminate(); URL.revokeObjectURL(workerUrl);
+    }
+  };
+
+  worker.onerror = (err) => {
+    showStatus('❌ Worker error: ' + err.message, 'error');
+    progressWrap.style.display = 'none';
+    resampleBtn.disabled = false;
+    worker.terminate(); URL.revokeObjectURL(workerUrl);
+  };
+
+  worker.postMessage({ file: currentFile, targetW, targetH });
+});
+
+// Download
+downloadBtn.addEventListener('click', () => {
+  if (!resultBlobUrl) return;
+  const a = document.createElement('a');
+  a.href = resultBlobUrl; a.download = resultFilename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+});
+</script>
+</body>
+</html>
