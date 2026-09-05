@@ -1230,6 +1230,45 @@ scalePercentInput.addEventListener('input', () => {
 
 jpgQualityInput.addEventListener('input', () => { qualityVal.textContent = jpgQualityInput.value; });
 
+// ── Patch DPI into JPEG JFIF APP0 segment ──
+// Browsers write JPEG with JFIF density unit=0 (aspect only) and X/Y=1.
+// This rewrites the APP0 segment to set unit=1 (dots per inch) with real DPI,
+// or inserts an APP0 segment if the encoder omitted it entirely.
+async function patchJpegDpi(blob, dpiX, dpiY) {
+  const buf = await blob.arrayBuffer();
+  const d = new Uint8Array(buf);
+  // Sanity check: must start with SOI (FF D8)
+  if (d.length < 20 || d[0] !== 0xFF || d[1] !== 0xD8) return blob;
+
+  // Check if byte 2-3 is APP0 marker (FF E0)
+  if (d[2] === 0xFF && d[3] === 0xE0) {
+    // Existing APP0 — check for JFIF signature at offset 4+2=6 (after marker+length)
+    if (d[6]===0x4A && d[7]===0x46 && d[8]===0x49 && d[9]===0x46 && d[10]===0x00) {
+      // Patch in-place: unit=1 (inch), Xdensity, Ydensity
+      const patched = new Uint8Array(buf.slice(0)); // copy
+      patched[13] = 1; // density unit = dots per inch
+      patched[14] = (dpiX >> 8) & 0xFF; patched[15] = dpiX & 0xFF; // X density
+      patched[16] = (dpiY >> 8) & 0xFF; patched[17] = dpiY & 0xFF; // Y density
+      return new Blob([patched], { type: 'image/jpeg' });
+    }
+  }
+
+  // No JFIF APP0 found — insert a minimal one after SOI
+  // APP0 structure: FF E0 [len=0x0010] "JFIF\0" ver1.01 unit=1 Xden Yden 0 0
+  const app0 = new Uint8Array([
+    0xFF, 0xE0,       // APP0 marker
+    0x00, 0x10,       // length = 16 (includes length field itself)
+    0x4A, 0x46, 0x49, 0x46, 0x00, // "JFIF\0"
+    0x01, 0x01,       // version 1.01
+    0x01,             // density unit = dots per inch
+    (dpiX >> 8) & 0xFF, dpiX & 0xFF, // X density
+    (dpiY >> 8) & 0xFF, dpiY & 0xFF, // Y density
+    0x00, 0x00        // no thumbnail
+  ]);
+  // SOI (2 bytes) + APP0 + rest of original data after SOI
+  return new Blob([d.slice(0, 2), app0, d.slice(2)], { type: 'image/jpeg' });
+}
+
 // Resample
 resampleBtn.addEventListener('click', async () => {
   if (!currentFile || !currentHeader) return;
@@ -1284,14 +1323,20 @@ resampleBtn.addEventListener('click', async () => {
       const imgData = new ImageData(new Uint8ClampedArray(msg.rgba), msg.width, msg.height);
       ctx.putImageData(imgData, 0, 0);
 
-      canvas.toBlob((jpgBlob) => {
+      canvas.toBlob(async (rawBlob) => {
+        // Patch JFIF APP0 DPI into the JPEG so other tools read the real resolution.
+        // Output DPI = targetPixels / (sourcePixels / sourceDPI)
+        const outDpiH = Math.round(msg.width * currentHeader.dpiH / currentHeader.width) || 72;
+        const outDpiV = Math.round(msg.height * (currentHeader.dpiV || currentHeader.dpiH) / currentHeader.height) || 72;
+        const jpgBlob = await patchJpegDpi(rawBlob, outDpiH, outDpiV);
+
         if (resultBlobUrl) URL.revokeObjectURL(resultBlobUrl);
         resultBlobUrl = URL.createObjectURL(jpgBlob);
         const baseName = currentFile.name.replace(/\.(psb|psd)$/i, '');
         resultFilename = baseName + '_' + msg.width + 'x' + msg.height + '.jpg';
         document.getElementById('previewImg').src = resultBlobUrl;
         document.getElementById('resultInfo').textContent =
-          msg.width + ' × ' + msg.height + ' · ' + formatSize(jpgBlob.size) + ' · ' + elapsed + 's';
+          msg.width + ' × ' + msg.height + ' · ' + outDpiH + ' DPI · ' + formatSize(jpgBlob.size) + ' · ' + elapsed + 's';
         resultCard.classList.remove('hidden');
         progressWrap.style.display = 'none';
         resampleBtn.disabled = false;
